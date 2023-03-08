@@ -126,11 +126,44 @@ object MutexPlayground extends IOApp.Simple {
     _ <- mutex.printState
   } yield res
 
-//  override def run: IO[Unit] = demoLockingTasksWithCancelation().debug.void
+  //  override def run: IO[Unit] = demoLockingTasksWithCancelation().debug.void
 
-  override def run: IO[Unit] = (for {
-    fib <- demoLockingTasksWithCancelation().start
-    _ <- IO.sleep(3.second) >> fib.cancel
-    res <- fib.join
-  } yield res).debug.void
+
+  def demoCancelWhileBlocked(): IO[Unit] = for {
+    mutex <- Mutex.createWithCancelation
+    fib1 <- (
+      IO("[fib1] getting the mutex").debug >>
+        mutex.acquire >>
+        IO("[fib1] get the mutex and never release !").debug >>
+        IO.never
+      ).start
+    fib2 <- (
+      IO("[fib2] sleeping").debug >>
+        IO.sleep(1.second) >>
+        IO("[fib2] trying to acquire the mutex").debug >>
+        mutex.acquire >>
+        IO("[fib2] acquire the mutex").debug >>
+        IO.never
+      ).start
+    fib3 <- (
+      IO("[fib3] sleeping").debug >>
+        IO.sleep(1500.millis) >>
+        IO("[fib3] trying to acquire the mutex").debug >>
+        mutex.acquire >>
+        IO("[fib3] acquire the mutex").debug >>
+        IO.never
+      ).start
+    _ <- IO.sleep(2.seconds) >> IO("CANCELLING fib2 !").debug >> fib2.cancel
+    _ <- fib1.join
+    _ <- fib2.join
+    _ <- fib3.join
+  } yield ()
+
+
+  override def run: IO[Unit] = demoCancelWhileBlocked()
+//  override def run: IO[Unit] = (for {
+//    fib <- demoLockingTasksWithCancelation().start
+//    _ <- IO.sleep(3.second) >> fib.cancel
+//    res <- fib.join
+//  } yield res).debug.void
 }
